@@ -1,16 +1,173 @@
 import json
 import logging
-from typing import Iterator
+import re
+from typing import Iterator, List, Dict
 
 import gradio as gr
 import httpx
 
 logger = logging.getLogger(__name__)
 
+
+def _format_answer_with_citations(answer: str, chunks: List[Dict]) -> str:
+    """Format answer text with clickable inline citations [1], [2], etc.
+    
+    Args:
+        answer: The answer text from LLM
+        chunks: List of chunk dictionaries with chunk_index, arxiv_id, pdf_url
+        
+    Returns:
+        Formatted answer with clickable citation links
+    """
+    if not chunks:
+        return answer
+    
+    # Create mapping from citation number to chunk info
+    chunk_map = {chunk.get("chunk_index", i+1): chunk for i, chunk in enumerate(chunks)}
+    
+    # Find all citation patterns like [1], [2], [3] or [arXiv:1234.5678]
+    def replace_citation(match):
+        citation_text = match.group(0)
+        
+        # Try to extract number from [1], [2], etc.
+        num_match = re.search(r'\[(\d+)\]', citation_text)
+        if num_match:
+            citation_num = int(num_match.group(1))
+            if citation_num in chunk_map:
+                chunk = chunk_map[citation_num]
+                arxiv_id = chunk.get("arxiv_id", "")
+                pdf_url = chunk.get("pdf_url", "")
+                # Make citation clickable - link to PDF and highlight
+                return f'<a href="{pdf_url}" target="_blank" style="color: #a78bfa; text-decoration: underline; font-weight: bold; background-color: rgba(139, 92, 246, 0.1); padding: 2px 4px; border-radius: 3px;">[{citation_num}]</a>'
+        
+        # If no number match, return original
+        return citation_text
+    
+    # Replace [1], [2], [3] patterns with clickable links
+    formatted = re.sub(r'\[\d+\]', replace_citation, answer)
+    
+    return formatted
+
 # Configuration
 API_BASE_URL = "http://localhost:8000/api/v1"
 DEFAULT_MODEL = "llama3.2:1b"
 AVAILABLE_CATEGORIES = ["cs.AI", "cs.LG"]
+
+
+async def check_api_health() -> Dict:
+    """Check API health status."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(f"{API_BASE_URL}/health")
+            if response.status_code == 200:
+                return response.json()
+            else:
+                return {"status": "error", "message": f"API returned status {response.status_code}"}
+    except httpx.RequestError as e:
+        return {"status": "error", "message": f"Connection error: {str(e)}"}
+    except Exception as e:
+        return {"status": "error", "message": f"Error: {str(e)}"}
+
+
+def format_health_status(health_data: Dict) -> str:
+    """Format health status as HTML for display (collapsible)."""
+    if not health_data or health_data.get("status") == "error":
+        status_icon = "❌"
+        status_color = "#ef4444"
+        status_text = "Offline"
+        message = health_data.get("message", "Cannot connect to API") if health_data else "API unavailable"
+        
+        return f"""
+        <details style="background: rgba(239, 68, 68, 0.1); border: 2px solid #ef4444; border-radius: 12px; padding: 1rem; margin-bottom: 1rem; cursor: pointer;">
+            <summary style="display: flex; align-items: center; gap: 0.5rem; list-style: none; cursor: pointer; user-select: none;">
+                <span style="font-size: 1.5rem;">{status_icon}</span>
+                <div>
+                    <strong style="color: {status_color}; font-size: 1.1rem;">API Status: {status_text}</strong>
+                    <span style="color: #9ca3af; margin-left: 0.5rem; font-size: 0.85rem;">(Click to expand)</span>
+                </div>
+            </summary>
+            <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid rgba(239, 68, 68, 0.3);">
+                <p style="color: #d1d5db; margin: 0; font-size: 0.9rem;">{message}</p>
+            </div>
+        </details>
+        """
+    
+    overall_status = health_data.get("status", "unknown")
+    services = health_data.get("services", {})
+    
+    # Determine status icon and color
+    if overall_status == "ok":
+        status_icon = "✅"
+        status_color = "#10b981"
+        status_text = "All Systems Operational"
+    elif overall_status == "degraded":
+        status_icon = "⚠️"
+        status_color = "#f59e0b"
+        status_text = "Degraded Performance"
+    else:
+        status_icon = "❌"
+        status_color = "#ef4444"
+        status_text = "System Issues"
+    
+    # Format service statuses
+    service_items = []
+    for service_name, service_data in services.items():
+        if isinstance(service_data, dict):
+            service_status = service_data.get("status", "unknown")
+            service_msg = service_data.get("message", "")
+            
+            if service_status == "healthy":
+                service_icon = "✅"
+                service_color = "#10b981"
+            else:
+                service_icon = "❌"
+                service_color = "#ef4444"
+            
+            service_items.append(f"""
+            <div style="display: flex; align-items: center; gap: 0.5rem; margin: 0.5rem 0;">
+                <span>{service_icon}</span>
+                <div>
+                    <strong style="color: {service_color}; text-transform: capitalize;">{service_name}:</strong>
+                    <span style="color: #d1d5db; margin-left: 0.5rem; font-size: 0.9rem;">{service_msg}</span>
+                </div>
+            </div>
+            """)
+    
+    services_html = "".join(service_items)
+    
+    version = health_data.get("version", "unknown")
+    environment = health_data.get("environment", "unknown")
+    
+    return f"""
+    <details style="background: rgba(30, 30, 50, 0.95); border: 2px solid {status_color}; border-radius: 12px; padding: 1rem 1.5rem; margin-bottom: 1rem; cursor: pointer;">
+        <summary style="display: flex; align-items: center; gap: 0.75rem; list-style: none; cursor: pointer; user-select: none;">
+            <span style="font-size: 1.8rem;">{status_icon}</span>
+            <div style="flex: 1;">
+                <strong style="color: {status_color}; font-size: 1.1rem;">API Status: {status_text}</strong>
+                <p style="color: #9ca3af; margin: 0.25rem 0 0 0; font-size: 0.85rem;">Version {version} • {environment} • <em style="color: #6b7280;">Click to view details</em></p>
+            </div>
+        </summary>
+        <div style="border-top: 1px solid rgba(139, 92, 246, 0.3); padding-top: 1rem; margin-top: 1rem;">
+            <strong style="color: #c4b5fd; font-size: 0.95rem; display: block; margin-bottom: 0.75rem;">Service Status:</strong>
+            {services_html}
+        </div>
+    </details>
+    <style>
+        details summary::-webkit-details-marker {{
+            display: none;
+        }}
+        details summary::before {{
+            content: '▶';
+            color: #a78bfa;
+            margin-right: 0.5rem;
+            display: inline-block;
+            transition: transform 0.2s;
+        }}
+        details[open] summary::before {{
+            transform: rotate(90deg);
+        }}
+    </style>
+    """
 
 
 async def stream_response(
@@ -37,6 +194,7 @@ async def stream_response(
 
                 current_answer = ""
                 sources = []
+                chunks = []  # Store chunk information
                 chunks_used = 0
                 search_mode = ""
 
@@ -51,9 +209,10 @@ async def stream_response(
                                 yield f"### ❌ Error\n\n{data['error']}\n\n💡 *Please try again or adjust your query.*"
                                 return
 
-                            # Handle metadata
+                            # Handle metadata (including chunks)
                             if "sources" in data:
                                 sources = data["sources"]
+                                chunks = data.get("chunks", [])  # Get chunk data
                                 chunks_used = data.get("chunks_used", 0)
                                 search_mode = data.get("search_mode", "unknown")
                                 continue
@@ -61,8 +220,11 @@ async def stream_response(
                             # Handle streaming chunks
                             if "chunk" in data:
                                 current_answer += data["chunk"]
+                                # Format answer with clickable inline citations
+                                formatted_answer = _format_answer_with_citations(current_answer, chunks)
+                                
                                 # Format response with sources if we have them
-                                formatted_response = f"### 🤖 AI Answer\n\n{current_answer}"
+                                formatted_response = f"### 🤖 AI Answer\n\n{formatted_answer}"
                                 if sources or chunks_used:
                                     formatted_response += f"\n\n---\n\n"
                                     formatted_response += f"### 📊 Search Insights\n\n"
@@ -76,6 +238,25 @@ async def stream_response(
                                             formatted_response += f"{i}. 📄 [{paper_id}]({source})\n"
                                         if len(sources) > 3:
                                             formatted_response += f"\n*... and {len(sources) - 3} more papers*\n"
+                                    
+                                    # Add expandable chunk viewer
+                                    if chunks:
+                                        formatted_response += f"\n---\n\n"
+                                        formatted_response += "#### 📖 Retrieved Passages (Click to Expand)\n\n"
+                                        for chunk in chunks:
+                                            chunk_idx = chunk.get("chunk_index", 0)
+                                            arxiv_id = chunk.get("arxiv_id", "")
+                                            chunk_text = chunk.get("chunk_text", "")
+                                            pdf_url = chunk.get("pdf_url", "")
+                                            
+                                            # Truncate long chunks for display
+                                            preview_text = chunk_text[:200] + "..." if len(chunk_text) > 200 else chunk_text
+                                            
+                                            formatted_response += f"<details>\n"
+                                            formatted_response += f"<summary><strong>[{chunk_idx}]</strong> 📄 {arxiv_id} - <em>Click to view passage</em></summary>\n\n"
+                                            formatted_response += f"**Source:** [{arxiv_id}]({pdf_url})\n\n"
+                                            formatted_response += f"**Passage:**\n\n> {chunk_text}\n\n"
+                                            formatted_response += f"</details>\n\n"
 
                                 yield formatted_response
 
@@ -85,8 +266,11 @@ async def stream_response(
                                 if final_answer != current_answer:
                                     current_answer = final_answer
 
+                                # Format answer with clickable inline citations
+                                formatted_answer = _format_answer_with_citations(current_answer, chunks)
+                                
                                 # Final formatted response with enhanced styling
-                                formatted_response = f"### 🤖 AI Answer\n\n{current_answer}"
+                                formatted_response = f"### 🤖 AI Answer\n\n{formatted_answer}"
                                 if sources or chunks_used:
                                     formatted_response += f"\n\n---\n\n"
                                     formatted_response += f"### 📊 Search Insights\n\n"
@@ -100,6 +284,22 @@ async def stream_response(
                                             formatted_response += f"{i}. 📄 [{paper_id}]({source})\n"
                                         if len(sources) > 3:
                                             formatted_response += f"\n*... and {len(sources) - 3} more papers*\n"
+                                    
+                                    # Add expandable chunk viewer
+                                    if chunks:
+                                        formatted_response += f"\n---\n\n"
+                                        formatted_response += "#### 📖 Retrieved Passages (Click to Expand)\n\n"
+                                        for chunk in chunks:
+                                            chunk_idx = chunk.get("chunk_index", 0)
+                                            arxiv_id = chunk.get("arxiv_id", "")
+                                            chunk_text = chunk.get("chunk_text", "")
+                                            pdf_url = chunk.get("pdf_url", "")
+                                            
+                                            formatted_response += f"<details>\n"
+                                            formatted_response += f"<summary><strong>[{chunk_idx}]</strong> 📄 {arxiv_id} - <em>Click to view passage</em></summary>\n\n"
+                                            formatted_response += f"**Source:** [{arxiv_id}]({pdf_url})\n\n"
+                                            formatted_response += f"**Passage:**\n\n> {chunk_text}\n\n"
+                                            formatted_response += f"</details>\n\n"
                                 
                                 formatted_response += f"\n\n✨ *Answer generated successfully!*"
                                 yield formatted_response
@@ -334,6 +534,20 @@ def create_gradio_interface():
                 elem_classes="header-content"
             )
 
+        # API Health Status
+        with gr.Row():
+            health_status = gr.HTML(
+                value="<div style='text-align: center; color: #9ca3af; padding: 1rem;'>🔄 Checking API status...</div>",
+                label="📊 System Status",
+                visible=True,
+            )
+            refresh_health_btn = gr.Button(
+                "🔄 Refresh Status",
+                variant="secondary",
+                size="sm",
+                scale=0,
+            )
+
         # Main Input Section
         with gr.Row(elem_classes="input-section"):
             with gr.Column(scale=4):
@@ -442,6 +656,25 @@ def create_gradio_interface():
         # Event Handlers
         def clear_interface():
             return "", "👋 **Ready to explore!** Ask a question above to get started."
+        
+        async def update_health_status():
+            """Update health status display."""
+            health_data = await check_api_health()
+            return format_health_status(health_data)
+        
+        # Load health status on page load
+        interface.load(
+            fn=update_health_status,
+            inputs=[],
+            outputs=[health_status],
+        )
+        
+        # Refresh health status button
+        refresh_health_btn.click(
+            fn=update_health_status,
+            inputs=[],
+            outputs=[health_status],
+        )
         
         submit_btn.click(
             fn=stream_response,
