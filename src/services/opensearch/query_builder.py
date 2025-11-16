@@ -43,9 +43,23 @@ class QueryBuilder:
 
         if fields is None:
             if search_chunks:
-                self.fields = ["chunk_text^3", "title^2", "abstract^1"]
+                # Optimized for RAG: title and abstract context highly relevant
+                self.fields = [
+                    "chunk_text^1.0",      # Base relevance - actual content
+                    "title^2.5",           # 2.5x boost - title matches are highly relevant
+                    "abstract^1.8",        # 1.8x boost - abstract provides key context
+                    "section_title^1.3",   # 1.3x boost - section context matters
+                    "authors^0.5",         # 0.5x - author names less relevant for content
+                    "categories^1.2"       # 1.2x - category matches helpful for domain
+                ]
             else:
-                self.fields = ["title^3", "abstract^2", "authors^1"]
+                # Optimized for paper search: title most important
+                self.fields = [
+                    "title^3.0",           # 3x boost - title is primary signal
+                    "abstract^2.0",        # 2x boost - abstract summarizes content
+                    "authors^0.8",         # 0.8x - author names moderately relevant
+                    "categories^1.5"       # 1.5x - categories important for filtering
+                ]
         else:
             self.fields = fields
 

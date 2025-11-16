@@ -66,6 +66,7 @@ class MetadataFetcher:
         max_results: Optional[int] = None,
         from_date: Optional[str] = None,
         to_date: Optional[str] = None,
+        start: int = 0,
         process_pdfs: bool = True,
         store_to_db: bool = True,
         db_session: Optional[Session] = None,
@@ -75,6 +76,7 @@ class MetadataFetcher:
         :param max_results: Maximum papers to fetch
         :param from_date: Filter papers from this date (YYYYMMDD)
         :param to_date: Filter papers to this date (YYYYMMDD)
+        :param start: Starting index for pagination
         :param process_pdfs: Whether to download and parse PDFs
         :param store_to_db: Whether to store results in database
         :param db_session: Database session (required if store_to_db=True)
@@ -103,7 +105,7 @@ class MetadataFetcher:
         try:
             # Step 1: Fetch paper metadata from arXiv
             papers = await self.arxiv_client.fetch_papers(
-                max_results=max_results, from_date=from_date, to_date=to_date, sort_by="submittedDate", sort_order="descending"
+                max_results=max_results, start=start, from_date=from_date, to_date=to_date, sort_by="submittedDate", sort_order="descending"
             )
 
             results["papers_fetched"] = len(papers)
@@ -365,10 +367,13 @@ class MetadataFetcher:
                     "title": paper.title,
                     "authors": paper.authors,
                     "abstract": paper.abstract,
-                    "categories": paper.categories,
                     "published_date": published_date,
-                    "pdf_url": paper.pdf_url,
+                    # Note: categories and pdf_url are not in Paper model
+                    # pdf_url will be mapped to full_text_url in repository
                 }
+                # Map pdf_url to full_text_url (Paper model field)
+                if paper.pdf_url:
+                    paper_data["full_text_url"] = paper.pdf_url
 
                 # Add parsed content if available
                 if parsed_paper:

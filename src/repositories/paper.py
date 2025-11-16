@@ -14,7 +14,31 @@ class PaperRepository:
         self.session = session
 
     def create(self, paper: Union[ArxivPaperCreate, PubMedPaperCreate]) -> Paper:
-        db_paper = Paper(**paper.model_dump())
+        paper_data = paper.model_dump()
+        
+        # Handle arXiv papers: generate placeholder pmid if missing
+        if 'pmid' not in paper_data or not paper_data.get('pmid'):
+            if 'arxiv_id' in paper_data and paper_data.get('arxiv_id'):
+                # Generate placeholder pmid for arXiv papers
+                paper_data['pmid'] = f"arxiv:{paper_data['arxiv_id']}"
+            else:
+                raise ValueError("Paper must have either pmid or arxiv_id")
+        
+        # Filter out fields that don't exist in Paper model
+        # Paper model doesn't have: categories, pdf_url, pdf_processed, pdf_processing_date
+        # Store categories in a JSON field if needed, or just remove it
+        paper_data.pop('categories', None)  # Remove categories - not in model
+        paper_data.pop('pdf_url', None)  # Remove pdf_url - use full_text_url instead
+        if 'pdf_url' in paper.model_dump():
+            paper_data['full_text_url'] = paper.model_dump().get('pdf_url')
+        
+        # Map pdf_processed to content_processed
+        if 'pdf_processed' in paper_data:
+            paper_data['content_processed'] = paper_data.pop('pdf_processed')
+        if 'pdf_processing_date' in paper_data:
+            paper_data['content_processing_date'] = paper_data.pop('pdf_processing_date')
+        
+        db_paper = Paper(**paper_data)
         self.session.add(db_paper)
         self.session.commit()
         self.session.refresh(db_paper)

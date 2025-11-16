@@ -75,6 +75,11 @@ class HybridIndexingService:
             # Step 3: Prepare chunks with embeddings for indexing
             chunks_with_embeddings = []
 
+            pdf_url = (
+                paper_data.get("full_text_url")
+                or (f"https://arxiv.org/pdf/{arxiv_id}.pdf" if arxiv_id else "")
+            )
+
             for chunk, embedding in zip(chunks, embeddings):
                 # Prepare chunk data for OpenSearch
                 chunk_data = {
@@ -95,6 +100,7 @@ class HybridIndexingService:
                     "abstract": paper_data.get("abstract", ""),
                     "categories": paper_data.get("categories", []),
                     "published_date": paper_data.get("published_date"),
+                    "pdf_url": pdf_url,
                 }
 
                 chunks_with_embeddings.append({"chunk_data": chunk_data, "embedding": embedding})

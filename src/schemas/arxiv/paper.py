@@ -23,9 +23,9 @@ class PaperBase(BaseModel):
     title: str = Field(..., description="Paper title")
     authors: List[str] = Field(..., description="List of author names")
     abstract: str = Field(..., description="Paper abstract")
-    categories: List[str] = Field(..., description="Paper categories")
+    categories: Optional[List[str]] = Field(None, description="Paper categories")  # Optional - not stored in DB
     published_date: datetime = Field(..., description="Date published on arXiv")
-    pdf_url: str = Field(..., description="URL to PDF")
+    pdf_url: Optional[str] = Field(None, description="URL to PDF")  # Optional - mapped to full_text_url in DB
 
 
 class PaperCreate(PaperBase):

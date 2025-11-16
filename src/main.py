@@ -74,7 +74,7 @@ async def lifespan(app: FastAPI):
     # Get Redis client for embedding caching
     redis_client = None
     if app.state.cache_client:
-        redis_client = app.state.cache_client.redis_client
+        redis_client = getattr(app.state.cache_client, "redis", None)
     
     # Initialize other services
     app.state.arxiv_client = make_arxiv_client()

@@ -61,6 +61,7 @@ ARXIV_PAPERS_CHUNKS_MAPPING = {
             "abstract": {"type": "text", "analyzer": "text_analyzer"},
             "categories": {"type": "keyword"},
             "published_date": {"type": "date"},
+            "pdf_url": {"type": "keyword"},
             "section_title": {"type": "keyword"},
             "embedding_model": {"type": "keyword"},
             "created_at": {"type": "date"},

@@ -8,6 +8,7 @@ from fastapi.responses import StreamingResponse
 from src.dependencies import CacheDep, EmbeddingsDep, LangfuseDep, OllamaDep, OpenSearchDep
 from src.schemas.api.ask import AskRequest, AskResponse
 from src.services.langfuse.tracer import RAGTracer
+from src.utils.query_preprocessor import preprocess_query, analyze_query
 
 logger = logging.getLogger(__name__)
 
@@ -25,22 +26,35 @@ async def _prepare_chunks_and_sources(
 ) -> tuple[List[Dict], List[str], List[str]]:
     """Retrieve and prepare chunks for RAG with clean tracing."""
 
+    # Preprocess query for better search quality
+    original_query = request.query
+    preprocessed_query = preprocess_query(original_query)
+    
+    # Log if query was modified
+    if preprocessed_query != original_query:
+        logger.info(f"Query preprocessed: '{original_query}' -> '{preprocessed_query}'")
+    
+    # Analyze query characteristics for potential optimizations
+    query_analysis = analyze_query(original_query)
+    logger.debug(f"Query analysis: {query_analysis}")
+
     # Handle embeddings for hybrid search
     query_embedding = None
     if request.use_hybrid:
         with rag_tracer.trace_embedding(trace, request.query) as embedding_span:
             try:
-                query_embedding = await embeddings_service.embed_query(request.query)
+                # Use original query for embeddings (semantic meaning preserved)
+                query_embedding = await embeddings_service.embed_query(original_query)
                 logger.info("Generated query embedding for hybrid search")
             except Exception as e:
                 logger.warning(f"Failed to generate embeddings, falling back to BM25: {e}")
                 if embedding_span:
                     rag_tracer.tracer.update_span(embedding_span, output={"success": False, "error": str(e)})
 
-    # Search with tracing
-    with rag_tracer.trace_search(trace, request.query, request.top_k) as search_span:
+    # Search with tracing - use preprocessed query for BM25
+    with rag_tracer.trace_search(trace, preprocessed_query, request.top_k) as search_span:
         search_results = opensearch_client.search_unified(
-            query=request.query,
+            query=preprocessed_query,  # Use preprocessed query for keyword search
             query_embedding=query_embedding,
             size=request.top_k,
             from_=0,
