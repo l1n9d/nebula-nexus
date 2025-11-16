@@ -41,9 +41,8 @@
 
 ### **📋 Prerequisites**
 
-- **Docker Desktop** (with Docker Compose v2+)
+- **Docker Desktop** 
 - **Python 3.12+**
-- **UV Package Manager** ([Install Guide](https://docs.astral.sh/uv/getting-started/installation/))
 - **8GB+ RAM** and **20GB+ free disk space**
 
 ### **⚡ Installation**
@@ -110,7 +109,7 @@ python3 src/gradio_app.py
 └──────┬──────┘
        │
     ┌──┴──────────────────────────────┐
-    │                                  │
+    │                                 │
 ┌───▼─────┐  ┌──────────┐  ┌─────────▼────┐
 │  Redis  │  │PostgreSQL│  │  OpenSearch  │
 │  Cache  │  │ Database │  │ (Hybrid BM25 │
@@ -350,30 +349,6 @@ JINA_API_KEY=your_key_here
 
 ---
 
-## 🎓 Learning Resources
-
-This project demonstrates production RAG system development through:
-
-1. **Infrastructure Setup** - Docker, PostgreSQL, OpenSearch
-2. **Data Pipeline** - arXiv API integration, Airflow orchestration
-3. **Search Implementation** - BM25 keyword search with filtering
-4. **Hybrid Search** - Chunking strategies + vector embeddings
-5. **RAG Integration** - Local LLM with streaming responses
-6. **Production Features** - Caching, monitoring, optimization
-
-### **Related Blog Posts**
-
-- [The Infrastructure That Powers RAG Systems](https://jamwithai.substack.com/p/the-infrastructure-that-powers-rag)
-- [Building Data Ingestion Pipelines for RAG](https://jamwithai.substack.com/p/bringing-your-rag-system-to-life)
-- [The Search Foundation Every RAG System Needs](https://jamwithai.substack.com/p/the-search-foundation-every-rag-system)
-- [The Chunking Strategy That Makes Hybrid Search Work](https://jamwithai.substack.com/p/the-chunking-strategy-that-makes-hybrid-search-work)
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit issues or pull requests.
-
 ### **Development Setup**
 
 ```bash
@@ -393,12 +368,6 @@ pytest
 
 ---
 
-## 📝 License
-
-This project is licensed under the terms specified in the [LICENSE](LICENSE) file.
-
----
-
 ## 🙏 Acknowledgments
 
 - **arXiv** - For providing free access to academic papers
@@ -415,7 +384,3 @@ For questions or feedback, please open an issue on GitHub.
 
 ---
 
-<div align="center">
-  <p><strong>✨ Built with passion for the AI research community ✨</strong></p>
-  <p>⭐ Star this repo if you find it useful! ⭐</p>
-</div>
